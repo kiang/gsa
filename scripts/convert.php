@@ -6,21 +6,28 @@ $basePath = dirname(__DIR__);
 // }
 
 $fh = fopen($basePath . '/list.csv', 'r');
-$info = array();
+$info = [];
 while($line = fgetcsv($fh, 2048)) {
-  preg_match('/[a-z0-9]+/i', $line[1], $matches);
+  preg_match('/[a-z0-9]+/i', $line[0], $matches);
   $code = $matches[0];
-  $name = trim(str_replace($code, '', $line[1]));
-  $parts = explode('-', $line[1]);
-  if(count($parts) > 1) {
-    $code .= '-' . $parts[1];
+  $clean = str_replace([$code, ' ', "\n"], '', $line[0]);
+  $clean = str_replace(['）', '（'], [')', '('], $clean);
+  $parts = preg_split('/[\\(\\)]/', $clean);
+  $doc = explode("\n", $line[1]);
+
+  $nameParts = explode('-', $parts[1]);
+  if(isset($nameParts[1])) {
+    $code .= '-' . $nameParts[1];
+  }
+  if($code === 'F0011') {
+    continue;
   }
 
   $info[$code] = array(
-    'name' => $name,
-    'type' => $line[0],
-    'date' => $line[2],
-    'doc' => $line[3],
+    'name' => $parts[1],
+    'type' => $parts[0],
+    'date' => $doc[0],
+    'doc' => $doc[1],
   );
   file_put_contents($basePath . '/info.json', json_encode($info));
 }
@@ -34,6 +41,7 @@ foreach(glob($basePath . '/shp/*/*.shp') AS $shpFile) {
   $codeParts = explode('-', $part);
   if(!empty($codeParts[1]) && !empty($codeParts[0])) {
     $code = $matches[0] . '-' . $codeParts[1];
+    $code = substr($code, 0, -1);
   } else {
     $code = $matches[0];
   }
@@ -46,6 +54,7 @@ foreach(glob($basePath . '/shp/*/*.shp') AS $shpFile) {
     unlink($topoFile);
   }
   error_log("converting {$code}");
+  $shpFile = str_replace(['(', ')', ' '], ['\\(', '\\)', '\\ '], $shpFile);
   exec("/usr/bin/ogr2ogr -t_srs EPSG:4326 -s_srs EPSG:3826 -mapFieldType String -dim 2 -lco SIGNIFICANT_FIGURES=11 -f geojson {$jsonFile} {$shpFile}");
   exec("mapshaper -i {$jsonFile} -o format=topojson {$topoFile}");
 }
